@@ -37,6 +37,14 @@ software-risk-platform/
 - Python 3.10+
 - Node.js 18+ and npm
 
+## Environment Setup
+
+Optional environment files are provided with safe defaults:
+- Backend: `backend/.env.example` (configurable `PORT`, `HOST`, `DATABASE_URL`, `CORS_ORIGINS`, `DATA_DIR`)
+- Frontend: `frontend/.env.example` (configurable `VITE_API_URL`)
+
+To customize, copy `.env.example` to `.env` in `backend/` or `frontend/`.
+
 ## 1. Run the backend
 
 ```bash
@@ -47,15 +55,8 @@ pip install -r requirements.txt
 python run.py
 ```
 
-The API starts at **http://localhost:8000** (interactive docs at `/docs`).
+The API starts at **http://localhost:8000** (interactive docs at `/docs`, health check at `/health`).
 A SQLite database and the trained ML model are created automatically under `backend/data/` on first run.
-
-**Troubleshooting: `pydantic-core` fails to build (common on very new Python versions, e.g. 3.14)**
-`requirements.txt` uses version floors rather than exact pins specifically so pip can pick a release with a prebuilt wheel for your Python version. If you still hit a build error like `pyo3-ffi ... configured Python interpreter version is newer than PyO3's maximum supported version`, your cached/resolved `pydantic-core` predates your Python version. Fix with:
-```bash
-pip install --upgrade "pydantic>=2.12.0" "fastapi>=0.115.6" "starlette>=0.48.0"
-pip install -r requirements.txt
-```
 
 ## 2. Run the frontend
 
@@ -69,7 +70,26 @@ npm run dev
 
 Open **http://localhost:5173**. The Vite dev server proxies `/api/*` to the backend on port 8000 (see `frontend/vite.config.ts`), so no CORS config is needed in dev.
 
-## 3. Try it out
+## 3. Run tests
+
+### Backend tests (pytest)
+
+```bash
+cd backend
+source venv/bin/activate
+pytest -v
+```
+
+This runs unit and integration tests covering authentication, regex and AST analysis, dependency analysis, code metrics, ML risk scoring, safe zip extraction (including zip-slip prevention), and end-to-end sample project scanning and PDF generation.
+
+### Frontend typecheck and build
+
+```bash
+cd frontend
+npm run build
+```
+
+## 4. Try it out
 
 1. Register an account (any email/password, pick a role).
 2. On the Upload page, zip the included `sample-project/` folder and upload it:

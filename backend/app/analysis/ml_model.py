@@ -28,8 +28,9 @@ except ImportError:
     HAVE_SKLEARN = False
 
 from .feature_extractor import FEATURE_NAMES
+from ..database import DATA_DIR
 
-MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
+MODEL_DIR = DATA_DIR
 MODEL_PATH = os.path.join(MODEL_DIR, "risk_model.joblib")
 
 WEIGHTS = {
@@ -122,13 +123,19 @@ def _load_or_train_model():
 
     os.makedirs(MODEL_DIR, exist_ok=True)
     if os.path.exists(MODEL_PATH):
-        _model = joblib.load(MODEL_PATH)
-        return _model
+        try:
+            _model = joblib.load(MODEL_PATH)
+            return _model
+        except Exception:
+            _model = None
 
     X, y = _generate_synthetic_dataset()
     clf = RandomForestClassifier(n_estimators=150, max_depth=8, random_state=42)
     clf.fit(X, y)
-    joblib.dump(clf, MODEL_PATH)
+    try:
+        joblib.dump(clf, MODEL_PATH)
+    except Exception:
+        pass
     _model = clf
     return _model
 

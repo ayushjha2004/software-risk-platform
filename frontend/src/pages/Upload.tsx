@@ -41,9 +41,7 @@ export default function Upload() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await api.post("/projects/upload", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const res = await api.post("/projects/upload", form);
       await startAnalysis(res.data.id);
     } catch (err: any) {
       setError(err?.response?.data?.detail ?? "Upload failed");

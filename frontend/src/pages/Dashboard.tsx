@@ -64,7 +64,7 @@ export default function Dashboard() {
             File Risk
           </Link>
           <a
-            href={`/api/analysis/${projectId}/report`}
+            href={`/api/analysis/${projectId}/report${localStorage.getItem("token") ? `?token=${encodeURIComponent(localStorage.getItem("token") || "")}` : ""}`}
             className="text-sm px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-500 transition"
           >
             Download PDF Report
