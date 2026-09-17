@@ -1,0 +1,33 @@
+# --- Version control ---
+.git
+.gitignore
+
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+
+# --- Node / frontend ---
+**/node_modules/
+**/dist/
+**/.vite/
+**/coverage/
+
+# --- Docs / misc ---
+docs/
+*.md
+!README.md
+
+# --- Data / ML artifacts ---
+data/raw/
+data/processed/
+ml/models/

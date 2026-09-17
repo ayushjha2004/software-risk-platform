@@ -1,0 +1,23 @@
+# --- Web framework ---
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# --- Data validation / settings ---
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# --- Database ---
+sqlalchemy==2.0.36
+alembic==1.14.0
+# psycopg (v3) ships prebuilt binary wheels for current Python versions,
+# unlike psycopg2-binary which may need to compile from source (requiring
+# pg_config / PostgreSQL dev headers) on newer interpreters.
+psycopg[binary]==3.2.3
+
+# --- Testing ---
+pytest==8.3.4
+httpx==0.28.1
+
+# --- Code quality ---
+ruff==0.8.4
+black==24.10.0

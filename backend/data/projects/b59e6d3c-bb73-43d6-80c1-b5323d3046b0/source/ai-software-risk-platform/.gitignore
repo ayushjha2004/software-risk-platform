@@ -1,0 +1,47 @@
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+!*/.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# --- Node / frontend ---
+node_modules/
+dist/
+dist-ssr/
+.vite/
+coverage/
+
+# --- Docker ---
+*.pid
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Data (raw/processed datasets are not committed) ---
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# --- ML artifacts (added in later phases) ---
+ml/models/*
+!ml/models/.gitkeep
+
+# --- Logs ---
+*.log
+logs/

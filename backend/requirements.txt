@@ -1,0 +1,14 @@
+# Version floors instead of exact pins: pydantic-core / starlette need
+# recent releases to ship prebuilt wheels for newer Python versions
+# (e.g. Python 3.14 needs pydantic>=2.12, starlette>=0.48 — older pins
+# force pip to build from Rust/C source, which can fail without a
+# matching PyO3/build-tooling version). Let pip resolve within these floors.
+fastapi>=0.115.6
+uvicorn[standard]>=0.30.6
+sqlalchemy>=2.0.35
+pydantic>=2.12.0
+python-multipart>=0.0.9
+scikit-learn>=1.5.2
+joblib>=1.4.2
+numpy>=1.26.4
+reportlab>=4.2.5

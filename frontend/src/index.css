@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.card {
+  @apply bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg;
+}
+
+.badge-LOW { @apply bg-risk-low/20 text-risk-low border border-risk-low/40; }
+.badge-MEDIUM { @apply bg-risk-medium/20 text-risk-medium border border-risk-medium/40; }
+.badge-HIGH { @apply bg-risk-high/20 text-risk-high border border-risk-high/40; }
+.badge-CRITICAL { @apply bg-risk-critical/30 text-red-300 border border-risk-critical/60; }
