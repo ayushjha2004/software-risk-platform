@@ -1,7 +1,8 @@
 import axios from "axios";
 
 // In dev, Vite proxies /api -> http://localhost:8000 (see vite.config.ts)
-export const api = axios.create({ baseURL: "/api" });
+const baseURL = import.meta.env.VITE_API_URL || "/api";
+export const api = axios.create({ baseURL });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
@@ -11,6 +12,25 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("email");
+      localStorage.removeItem("role");
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname !== "/login" &&
+        window.location.pathname !== "/register"
+      ) {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export interface Project {
   id: number;

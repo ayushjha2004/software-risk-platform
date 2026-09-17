@@ -7,37 +7,45 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from .. import models, schemas, auth
+from .. import database
 from ..database import get_db
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-STORAGE_ROOT = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "projects"
-)
-os.makedirs(STORAGE_ROOT, exist_ok=True)
+
+def get_storage_root() -> str:
+    path = os.path.join(database.DATA_DIR, "projects")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def _safe_extract(zip_path: str, dest_dir: str):
     """Extract a zip while guarding against path traversal ('zip slip')."""
+    dest_dir_resolved = os.path.realpath(os.path.abspath(dest_dir))
     with zipfile.ZipFile(zip_path) as zf:
+        safe_members = []
         for member in zf.infolist():
-            member_path = os.path.normpath(os.path.join(dest_dir, member.filename))
-            if not member_path.startswith(os.path.normpath(dest_dir) + os.sep) and member_path != os.path.normpath(dest_dir):
-                continue  # skip suspicious entries
-        zf.extractall(dest_dir)
+            # Disallow absolute paths in member filenames or traversing outside dest_dir
+            normalized = os.path.normpath(member.filename)
+            if normalized.startswith("..") or os.path.isabs(normalized):
+                continue
+            target_path = os.path.realpath(os.path.abspath(os.path.join(dest_dir_resolved, normalized)))
+            if target_path == dest_dir_resolved or target_path.startswith(dest_dir_resolved + os.sep):
+                safe_members.append(member)
+        zf.extractall(dest_dir_resolved, members=safe_members)
 
 
 @router.post("/upload", response_model=schemas.ProjectOut)
 async def upload_project(
     file: UploadFile = File(...),
     current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(database.get_db),
 ):
-    if not file.filename.lower().endswith(".zip"):
+    if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only .zip uploads are supported in this build")
 
     project_uid = str(uuid.uuid4())
-    project_dir = os.path.join(STORAGE_ROOT, project_uid)
+    project_dir = os.path.join(get_storage_root(), project_uid)
     os.makedirs(project_dir, exist_ok=True)
 
     zip_path = os.path.join(project_dir, "upload.zip")
@@ -51,10 +59,14 @@ async def upload_project(
     except zipfile.BadZipFile:
         shutil.rmtree(project_dir, ignore_errors=True)
         raise HTTPException(status_code=400, detail="Uploaded file is not a valid ZIP archive")
+    except Exception as exc:
+        shutil.rmtree(project_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=f"Failed to extract uploaded archive: {exc}")
 
+    project_name = file.filename.rsplit(".", 1)[0] or "uploaded-project"
     project = models.Project(
         user_id=current_user.id,
-        name=file.filename.rsplit(".", 1)[0],
+        name=project_name,
         storage_path=extract_dir,
     )
     db.add(project)

@@ -11,7 +11,7 @@ export default function Report() {
         code metrics, dependency analysis, and recommendations.
       </p>
       <a
-        href={`/api/analysis/${projectId}/report`}
+        href={`/api/analysis/${projectId}/report${localStorage.getItem("token") ? `?token=${encodeURIComponent(localStorage.getItem("token") || "")}` : ""}`}
         className="inline-block bg-indigo-600 hover:bg-indigo-500 transition rounded-md px-6 py-3 font-medium"
       >
         Download PDF Report

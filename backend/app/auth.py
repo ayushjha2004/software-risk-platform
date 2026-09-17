@@ -7,17 +7,18 @@ import hashlib
 import os
 import secrets
 
-from fastapi import Depends, HTTPException, status
+from typing import Optional
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from .database import get_db
 from . import models
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def hash_password(password: str, salt: str = None) -> tuple[str, str]:
+def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
     return digest.hex(), salt
@@ -36,10 +37,14 @@ def create_token(db: Session, user: models.User) -> str:
 
 
 def get_current_user(
-    creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    token: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ) -> models.User:
-    token_row = db.query(models.Token).filter(models.Token.token == creds.credentials).first()
+    raw_token = creds.credentials if (creds and creds.credentials) else token
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    token_row = db.query(models.Token).filter(models.Token.token == raw_token).first()
     if not token_row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
     user = db.query(models.User).filter(models.User.id == token_row.user_id).first()
