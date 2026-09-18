@@ -1,5 +1,4 @@
 import axios from "axios";
-import { api, AnalysisDetail } from "../api";
 
 export interface Vulnerability {
   id: number;
@@ -16,10 +15,8 @@ export interface Vulnerability {
   references: string[];
 }
 
-// In dev, Vite proxies /api -> http://localhost:8000.
 const baseURL = import.meta.env.VITE_API_URL || "/api";
-export { api };
-export const http = axios.create({ baseURL });
+export const api = axios.create({ baseURL });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
