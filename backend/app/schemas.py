@@ -1,7 +1,7 @@
 """Pydantic request/response schemas."""
 import datetime
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
@@ -25,7 +25,6 @@ class ProjectOut(BaseModel):
     id: int
     name: str
     uploaded_at: datetime.datetime
-
     class Config:
         from_attributes = True
 
@@ -39,7 +38,6 @@ class FindingOut(BaseModel):
     description: str
     recommendation: str
     source: str
-
     class Config:
         from_attributes = True
 
@@ -51,7 +49,26 @@ class DependencyOut(BaseModel):
     pinned: str
     risk: str
     reason: str
+    ecosystem: str = ""
+    manifest: str = ""
+    direct: bool = True
+    class Config:
+        from_attributes = True
 
+
+class VulnerabilityOut(BaseModel):
+    id: int
+    vulnerability_id: str
+    aliases: List[str] = Field(default_factory=list)
+    package_name: str
+    installed_version: str
+    ecosystem: str
+    severity: str
+    cvss: Optional[float] = None
+    summary: str
+    affected_versions: List[str] = Field(default_factory=list)
+    fixed_version: Optional[str] = None
+    references: List[str] = Field(default_factory=list)
     class Config:
         from_attributes = True
 
@@ -60,7 +77,6 @@ class FileRiskOut(BaseModel):
     file: str
     risk: str
     findings_count: int
-
     class Config:
         from_attributes = True
 
@@ -87,7 +103,6 @@ class AnalysisRunOut(BaseModel):
     risk_category: str
     ml_confidence: float
     explanation: str
-
     class Config:
         from_attributes = True
 
@@ -96,4 +111,5 @@ class AnalysisDetailOut(BaseModel):
     run: AnalysisRunOut
     findings: List[FindingOut]
     dependencies: List[DependencyOut]
+    vulnerabilities: List[VulnerabilityOut] = Field(default_factory=list)
     file_risks: List[FileRiskOut]
