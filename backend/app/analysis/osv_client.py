@@ -1,10 +1,4 @@
-"""OSV vulnerability intelligence client.
-
-The client is deliberately independent of the analysis pipeline so it can be
-reused by CLI/API integrations and tested without making network calls. OSV is
-an enhancement: a failed or unavailable query never prevents a source scan
-from completing.
-"""
+"""OSV vulnerability intelligence client."""
 from __future__ import annotations
 
 import json
@@ -50,30 +44,32 @@ class OSVClient:
     @staticmethod
     def _severity(vulnerability: dict[str, Any]) -> tuple[str, Optional[float]]:
         database = vulnerability.get("database_specific") or {}
-        severity = str(database.get("severity") or "").upper()
         cvss: Optional[float] = None
-        for item in vulnerability.get("severity") or []:
-            score = str(item.get("score") or "")
-            if score.upper().startswith("CVSS"):
+        # OSV records commonly expose a numeric score in database_specific.
+        # Some feeds use cvss_score, others use cvss or a nested score object.
+        for candidate in (database.get("cvss_score"), database.get("cvss"), database.get("cvssV3Score")):
+            if isinstance(candidate, (int, float)):
+                cvss = float(candidate)
+                break
+            if isinstance(candidate, str):
                 try:
-                    # CVSS vectors do not contain a score; preserve UNKNOWN unless
-                    # OSV supplied a numeric database_specific score.
-                    cvss = float(database.get("cvss_score")) if database.get("cvss_score") is not None else None
-                except (TypeError, ValueError):
-                    cvss = None
+                    cvss = float(candidate)
+                    break
+                except ValueError:
+                    pass
+        severity = str(database.get("severity") or "").upper()
         if not severity and cvss is not None:
             severity = "CRITICAL" if cvss >= 9 else "HIGH" if cvss >= 7 else "MEDIUM" if cvss >= 4 else "LOW"
         return severity or "UNKNOWN", cvss
 
     @staticmethod
     def _fixed_version(vulnerability: dict[str, Any]) -> Optional[str]:
-        versions: list[str] = []
         for affected in vulnerability.get("affected") or []:
-            for event in (affected.get("ranges") or []):
-                for event_item in event.get("events") or []:
-                    if event_item.get("fixed"):
-                        versions.append(str(event_item["fixed"]))
-        return versions[0] if versions else None
+            for version_range in affected.get("ranges") or []:
+                for event in version_range.get("events") or []:
+                    if event.get("fixed"):
+                        return str(event["fixed"])
+        return None
 
     def query_package(self, name: str, version: str, ecosystem: str) -> list[VulnerabilityResult]:
         if not name or not version or version in {"unspecified", "*"}:
@@ -82,31 +78,22 @@ class OSVClient:
         cached = self._cache.get(key)
         if cached and time.time() - cached[0] < self.cache_ttl:
             return cached[1]
-
         payload = json.dumps({"package": {"name": name, "ecosystem": ecosystem}, "version": version}).encode()
         request = Request(OSV_QUERY_URL, data=payload, headers={"Content-Type": "application/json", "Accept": "application/json"}, method="POST")
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, OSError, ValueError):
-            # A vulnerability feed outage must not make static analysis unavailable.
             return []
-
         results: list[VulnerabilityResult] = []
         for item in data.get("vulns") or []:
             severity, cvss = self._severity(item)
+            events = [event for affected in item.get("affected") or [] for version_range in affected.get("ranges") or [] for event in version_range.get("events") or []]
             results.append(VulnerabilityResult(
-                vulnerability_id=str(item.get("id") or "UNKNOWN"),
-                summary=str(item.get("summary") or item.get("details") or ""),
-                severity=severity,
-                cvss=cvss,
-                affected_versions=[str(r.get("events") or r.get("introduced") or "") for a in item.get("affected") or [] for r in a.get("ranges") or []],
-                fixed_version=self._fixed_version(item),
-                references=[str(ref.get("url")) for ref in item.get("references") or [] if ref.get("url")],
-                aliases=[str(alias) for alias in item.get("aliases") or []],
-                ecosystem=ecosystem,
-                package_name=name,
-                installed_version=version,
+                vulnerability_id=str(item.get("id") or "UNKNOWN"), summary=str(item.get("summary") or item.get("details") or ""), severity=severity, cvss=cvss,
+                affected_versions=[str(event) for event in events], fixed_version=self._fixed_version(item),
+                references=[str(ref.get("url")) for ref in item.get("references") or [] if ref.get("url")], aliases=[str(alias) for alias in item.get("aliases") or []],
+                ecosystem=ecosystem, package_name=name, installed_version=version,
             ))
         self._cache[key] = (time.time(), results)
         return results
@@ -115,8 +102,7 @@ class OSVClient:
         findings: list[VulnerabilityResult] = []
         seen: set[tuple[str, str, str]] = set()
         for package in packages:
-            ecosystem = getattr(package, "ecosystem", "") or ""
-            key = (getattr(package, "name", ""), getattr(package, "version", ""), ecosystem)
+            key = (getattr(package, "name", ""), getattr(package, "version", ""), getattr(package, "ecosystem", "") or "")
             if key in seen:
                 continue
             seen.add(key)
