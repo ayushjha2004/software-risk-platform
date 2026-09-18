@@ -38,7 +38,13 @@ def parse_requirements_txt(content: str) -> List[DependencyResult]:
     results = []
     for raw in content.splitlines():
         line = raw.split("#", 1)[0].strip()
-        if not line or line.startswith(("-", "git+", "http:" , "https:")):
+        if not line or line.startswith(("-", "git+", "http:", "https:")):
+            continue
+        # Bare requirements are valid and intentionally remain unpinned. They
+        # still count as dependencies, although OSV cannot query them safely.
+        bare = re.match(r"^([A-Za-z0-9_.-]+)\s*$", line)
+        if bare:
+            results.append(_result(bare.group(1), "unspecified", "PyPI", "requirements.txt"))
             continue
         match = re.match(r"^([A-Za-z0-9_.-]+)\s*(?:==|===)\s*([^;\s]+)", line)
         if match:
@@ -71,11 +77,9 @@ def parse_package_lock(content: str) -> List[DependencyResult]:
     results = []
     packages = data.get("packages") or {}
     for path, package in packages.items():
-        if not path or path == "" or not isinstance(package, dict) or not package.get("version"):
+        if not path or not isinstance(package, dict) or not package.get("version"):
             continue
         name = path.rsplit("node_modules/", 1)[-1]
-        if name.startswith("@") and "/" in name:
-            name = name
         results.append(_result(name, str(package["version"]), "npm", "package-lock.json", "/node_modules/" not in path))
     return results
 
@@ -98,8 +102,7 @@ def parse_pyproject(content: str) -> List[DependencyResult]:
 
 def parse_pom(content: str) -> List[DependencyResult]:
     results = []
-    blocks = re.findall(r"<dependency>(.*?)</dependency>", content, flags=re.S)
-    for block in blocks:
+    for block in re.findall(r"<dependency>(.*?)</dependency>", content, flags=re.S):
         group = re.search(r"<groupId>\s*([^<]+)", block)
         artifact = re.search(r"<artifactId>\s*([^<]+)", block)
         version = re.search(r"<version>\s*([^<]+)", block)

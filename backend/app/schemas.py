@@ -1,6 +1,7 @@
-"""Pydantic request/response schemas."""
+"""Pydantic request and response schemas for authentication and analysis APIs."""
 import datetime
 from typing import List, Optional
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -15,8 +16,13 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
     role: str
     email: str
 
@@ -25,6 +31,7 @@ class ProjectOut(BaseModel):
     id: int
     name: str
     uploaded_at: datetime.datetime
+
     class Config:
         from_attributes = True
 
@@ -38,6 +45,7 @@ class FindingOut(BaseModel):
     description: str
     recommendation: str
     source: str
+
     class Config:
         from_attributes = True
 
@@ -52,6 +60,7 @@ class DependencyOut(BaseModel):
     ecosystem: str = ""
     manifest: str = ""
     direct: bool = True
+
     class Config:
         from_attributes = True
 
@@ -69,6 +78,7 @@ class VulnerabilityOut(BaseModel):
     affected_versions: List[str] = Field(default_factory=list)
     fixed_version: Optional[str] = None
     references: List[str] = Field(default_factory=list)
+
     class Config:
         from_attributes = True
 
@@ -77,6 +87,7 @@ class FileRiskOut(BaseModel):
     file: str
     risk: str
     findings_count: int
+
     class Config:
         from_attributes = True
 
@@ -103,6 +114,7 @@ class AnalysisRunOut(BaseModel):
     risk_category: str
     ml_confidence: float
     explanation: str
+
     class Config:
         from_attributes = True
 

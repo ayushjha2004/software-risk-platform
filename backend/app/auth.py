@@ -1,21 +1,44 @@
-"""Minimal auth: salted PBKDF2 password hashing + opaque bearer tokens stored in DB.
-
-This is intentionally dependency-free (no passlib/jwt) so the project runs with a
-plain `pip install -r requirements.txt` — swap in JWT/OAuth for a production system.
-"""
+"""Minimal auth with expiring, revocable opaque access and refresh tokens."""
 import hashlib
 import os
 import secrets
-
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+
 from fastapi import Depends, HTTPException, Query, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from .database import get_db
 from . import models
+from .database import get_db
 
 bearer_scheme = HTTPBearer(auto_error=False)
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """Normalize SQLite's naive UTC values and aware values to aware UTC.
+
+    SQLite commonly returns DATETIME columns without timezone information even
+    when an aware datetime was inserted. Treating those values as UTC avoids
+    naive/aware comparison failures while keeping all application comparisons
+    timezone-aware.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
@@ -29,25 +52,71 @@ def verify_password(password: str, salt: str, expected_hash: str) -> bool:
     return secrets.compare_digest(digest, expected_hash)
 
 
-def create_token(db: Session, user: models.User) -> str:
+def create_token(db: Session, user: models.User, kind: str = "access", session_id: Optional[str] = None, expires_delta: Optional[timedelta] = None) -> str:
     token = secrets.token_urlsafe(32)
-    db.add(models.Token(token=token, user_id=user.id))
+    now = utcnow()
+    expires = now + (expires_delta or (timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) if kind == "access" else timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)))
+    db.add(models.Token(token=token, token_hash=hash_token(token), user_id=user.id, kind=kind, session_id=session_id or secrets.token_hex(16), expires_at=expires, revoked=False, created_at=now, updated_at=now, last_used_at=now))
     db.commit()
     return token
 
 
-def get_current_user(
-    creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-    token: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-) -> models.User:
-    raw_token = creds.credentials if (creds and creds.credentials) else token
-    if not raw_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    token_row = db.query(models.Token).filter(models.Token.token == raw_token).first()
+def create_refresh_token(db: Session, user: models.User, session_id: Optional[str] = None) -> str:
+    return create_token(db, user, kind="refresh", session_id=session_id)
+
+
+def _lookup_token(db: Session, raw_token: str, kind: Optional[str] = None):
+    query = db.query(models.Token).filter(or_(models.Token.token == raw_token, models.Token.token_hash == hash_token(raw_token)))
+    if kind:
+        query = query.filter(models.Token.kind == kind)
+    return query.order_by(models.Token.created_at.desc()).first()
+
+
+def is_token_valid(db: Session, raw_token: str, kind: Optional[str] = None) -> Optional[models.Token]:
+    token_row = _lookup_token(db, raw_token, kind=kind)
+    if not token_row or token_row.revoked:
+        return None
+    expires_at = _as_utc(token_row.expires_at)
+    if expires_at is None or expires_at <= utcnow():
+        return None
+    return token_row
+
+
+def revoke_token(db: Session, raw_token: str, kind: Optional[str] = None) -> bool:
+    token_row = _lookup_token(db, raw_token, kind=kind)
     if not token_row:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+        return False
+    token_row.revoked = True
+    token_row.updated_at = utcnow()
+    db.commit()
+    return True
+
+
+def cleanup_expired_tokens(db: Session) -> int:
+    now = utcnow()
+    candidates = db.query(models.Token).all()
+    expired = [row for row in candidates if row.revoked or (_as_utc(row.expires_at) is not None and _as_utc(row.expires_at) <= now)]
+    for row in expired:
+        db.delete(row)
+    db.commit()
+    return len(expired)
+
+
+def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme), token: Optional[str] = Query(None), db: Session = Depends(get_db)) -> models.User:
+    raw_token = creds.credentials if creds and creds.credentials else token
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    token_row = is_token_valid(db, raw_token, kind="access")
+    if not token_row:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    token_row.last_used_at = utcnow()
+    db.commit()
     user = db.query(models.User).filter(models.User.id == token_row.user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     return user
+
+
+def get_refresh_token_user(raw_token: str, db: Session) -> Optional[models.User]:
+    token_row = is_token_valid(db, raw_token, kind="refresh")
+    return db.query(models.User).filter(models.User.id == token_row.user_id).first() if token_row else None
