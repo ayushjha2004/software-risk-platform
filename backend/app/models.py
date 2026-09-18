@@ -1,6 +1,6 @@
-"""SQLAlchemy ORM models for users, projects, scans, findings and vulnerability intelligence."""
+"""SQLAlchemy ORM models for users, projects, scans, findings and auth sessions."""
 import datetime
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -20,8 +20,17 @@ class Token(Base):
     __tablename__ = "tokens"
     id = Column(Integer, primary_key=True, index=True)
     token = Column(String, unique=True, index=True, nullable=False)
+    token_hash = Column(String, unique=True, index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    kind = Column(String, default="access")
+    session_id = Column(String, index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.utcnow() + datetime.timedelta(minutes=30))
+    revoked = Column(Boolean, default=False, nullable=False)
+    replaced_by = Column(String, nullable=True)
+    last_used_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=True)
+    token_owner = relationship("User")
 
 
 class Project(Base):
